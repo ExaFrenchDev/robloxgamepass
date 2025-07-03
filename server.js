@@ -1,23 +1,35 @@
-// server.js
-const express = require("express");
 const axios = require("axios");
-const cors = require("cors");
-const app = express();
-const port = process.env.PORT || 3000;
-
-app.use(cors());
 
 app.get("/gamepasses/:username", async (req, res) => {
-  const { username } = req.params;
+  const username = req.params.username;
+
   try {
-    const url = `https://catalog.roblox.com/v2/search/items/details?CreatorName=${username}&Limit=30&AssetTypes=34`;
-    const response = await axios.get(url);
-    res.json(response.data);
-  } catch (error) {
+    // Étape 1 : obtenir l'ID du joueur à partir de son nom
+    const userRes = await axios.get(`https://users.roblox.com/v1/usernames/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: { usernames: [username] }
+    });
+
+    const userId = userRes.data.data[0]?.id;
+    if (!userId) return res.status(404).json({ error: "Utilisateur non trouvé" });
+
+    // Étape 2 : chercher les gamepasses du joueur
+    const gamepassRes = await axios.get(`https://games.roblox.com/v2/users/${userId}/games?accessFilter=2&limit=50`);
+    const games = gamepassRes.data.data;
+
+    const gamepasses = [];
+
+    // Pour chaque jeu, on récupère les gamepasses associés
+    for (const game of games) {
+      const passesRes = await axios.get(`https://games.roblox.com/v1/games/${game.id}/game-passes?limit=100`);
+      gamepasses.push(...passesRes.data.data);
+    }
+
+    res.json(gamepasses);
+
+  } catch (err) {
+    console.error("Erreur API:", err.message);
     res.status(500).json({ error: "Failed to fetch gamepasses" });
   }
-});
-
-app.listen(port, () => {
-  console.log(`Proxy listening on port ${port}`);
 });
